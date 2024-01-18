@@ -85,17 +85,19 @@ class Aggregator(nn.Module):
         assert N == H * W
 
         x = x.transpose(1, 2).view(B, C, H, W)
-        seg_dim = self.dim // self.seg
+        seg_dim = self.dim // self.seg  # 按维度进行分组，相当于分了seg个head，每个head的维度为seg_dim
 
         x = x.split([seg_dim]*self.seg, dim=1)
 
         x_local = x[4].reshape(3, B//3, seg_dim, H, W).permute(1,0,2,3,4).reshape(B//3, 3*seg_dim, H, W)
-        x_local = self.agg0(x_local)
+        x_local = self.agg0(x_local)  # 把qkv的信息通过深度可分离卷积进行聚合
 
+        # 相当于在每个head上使用不同大小的核做深度可分离卷积，得到不同尺度的编码信息
+        # 就是将不同的核大小视为滑动窗的大小，并将滑动窗中的信息通过卷积编入滑动窗的中心，并以该中心作为该组的proxy
         x0 = self.act0(self.norm0(x[0]))
-        x1 = self.act1(self.norm1(self.agg1(x[1])))
-        x2 = self.act2(self.norm2(self.agg2(x[2])))
-        x3 = self.act3(self.norm3(self.agg3(x[3])))
+        x1 = self.act1(self.norm1(self.agg1(x[1])))  # 使用3*3的深度可分离卷积
+        x2 = self.act2(self.norm2(self.agg2(x[2])))  # 使用5*5的深度可分离卷积
+        x3 = self.act3(self.norm3(self.agg3(x[3])))  # 使用7*7的深度可分离卷积
 
         x = torch.cat([x0, x1, x2, x3], dim=1)
 
